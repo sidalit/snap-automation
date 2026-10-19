@@ -22,7 +22,7 @@ on:
         default: tag
 jobs:
   snap:
-    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.0
+    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.1
     with:
       build-from: ${{ inputs.build-from || 'tag' }}
       channel: beta
@@ -49,7 +49,7 @@ as `openspec-amd64` and `openspec-arm64`. A failed build or optional command
 prevents that architecture from publishing.
 
 The manual caller offers a dropdown; reusable workflows require a string input.
-For weekly HEAD builds and dynamic run titles, see the [OpenSpec caller](https://github.com/sidalit/openspec-snap/blob/main/.github/workflows/snap-build.yaml).
+For weekly HEAD builds, see the [OpenSpec caller](https://github.com/sidalit/openspec-snap/blob/main/.github/workflows/snap-build.yaml).
 Runs of the same workflow/ref are serialized: an active run finishes, while newer
 runs can replace an older pending run.
 
@@ -65,7 +65,7 @@ Add `renovate.json`:
 
 ```json
 {
-  "extends": ["github>sidalit/snap-automation#v1.0.0"],
+  "extends": ["github>sidalit/snap-automation#v1.0.1"],
   "assignees": ["your-github-username"]
 }
 ```
@@ -77,15 +77,15 @@ Mark the upstream version in `snap/snapcraft.yaml`:
     source-tag: 'v1.14.2'
 ```
 
-The preset enables automerge for upstream release updates. Require both build
-jobs in branch protection before using it. The [OpenSpec pilot](https://github.com/sidalit/openspec-snap/blob/main/renovate.json)
-shows the `packageRules` override to disable automerge. Workflow updates need
-manual review. Each repository defines its own assignees.
+The preset disables the Dependency Dashboard and uses GitHub automerge for
+upstream release updates. Enable Allow auto-merge and require both build jobs
+in branch protection. Workflow and preset updates need manual review.
+Each repository defines its own assignees.
 
 ## Releases
 
-After committing changes, create a new, unused version tag and update callers
-and Renovate presets to that tag.
+After committing changes, publish a new, unused version tag. Renovate opens PRs
+to update pinned workflow and preset versions in repositories using this preset.
 
 ## License
 

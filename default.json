@@ -4,6 +4,7 @@
   "extends": [
     "config:recommended"
   ],
+  "dependencyDashboard": false,
   "assignAutomerge": true,
   "customManagers": [
     {
@@ -26,7 +27,7 @@
       ],
       "automerge": true,
       "automergeType": "pr",
-      "platformAutomerge": false
+      "platformAutomerge": true
     }
   ]
 }
