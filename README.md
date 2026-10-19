@@ -22,7 +22,7 @@ on:
         default: tag
 jobs:
   snap:
-    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.1
+    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.2
     with:
       build-from: ${{ inputs.build-from || 'tag' }}
       channel: beta
@@ -42,8 +42,9 @@ manual runs can select HEAD instead.
 | `test-command` | empty | Optional command after installing the snap. Nothing runs by default. |
 
 HEAD builds expect one Git part with `source-tag`; each architecture resolves
-HEAD independently and sets `grade: devel`. Fixed versions get a commit suffix;
-recipes using `adopt-info` keep their own version logic. Tag builds skip preparation.
+HEAD independently and sets `grade: devel`. Versions use `<version>-<short-commit>`,
+including when HEAD is a release tag. Recipes using `adopt-info` need one standalone
+`craftctl set version=...` command in an override step. Tag builds skip preparation.
 The recipe is printed before building; artifacts use `<snap-name>-<arch>`, such
 as `openspec-amd64` and `openspec-arm64`. A failed build or optional command
 prevents that architecture from publishing.
@@ -65,7 +66,7 @@ Add `renovate.json`:
 
 ```json
 {
-  "extends": ["github>sidalit/snap-automation#v1.0.1"],
+  "extends": ["github>sidalit/snap-automation#v1.0.2"],
   "assignees": ["your-github-username"]
 }
 ```

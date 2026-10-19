@@ -56,6 +56,7 @@ jobs:
 
           python3 <<'PYTHON'
           from pathlib import Path
+          import re
           import subprocess
           import yaml
 
@@ -81,7 +82,32 @@ jobs:
               'parts': {**parts, name: {**source, 'source-commit': commit}},
           }
 
-          if 'version' in recipe:
+          if 'adopt-info' in recipe:
+              adopt = recipe['adopt-info']
+              metadata = recipe['parts'][adopt]
+              setter = re.compile(r'^([ \t]*)craftctl set version=(.+)$', re.MULTILINE)
+              matches = [
+                  (step, match)
+                  for step, script in metadata.items() if step.startswith('override-')
+                  for match in setter.finditer(script)
+              ]
+              if len(matches) != 1:
+                  raise SystemExit('HEAD builds need one standalone craftctl set version command in the adopt-info part.')
+
+              step, match = matches[0]
+              indent, expression = match.groups()
+              replacement = (
+                  f'{indent}snap_head_version={expression}\n'
+                  f"{indent}snap_head_version=$(printf '%s' \"$snap_head_version\" | sed -E 's/-[0-9]+-g[0-9a-f]+$//')\n"
+                  f'{indent}craftctl set version="${{snap_head_version:0:24}}-{commit[:7]}"'
+              )
+              script = metadata[step]
+              updated = script[:match.start()] + replacement + script[match.end():]
+              recipe = {
+                  **recipe,
+                  'parts': {**recipe['parts'], adopt: {**metadata, step: updated}},
+              }
+          else:
               version = str(recipe['version'])[:24]
               recipe = {**recipe, 'version': f'{version}-{commit[:7]}'}
 
