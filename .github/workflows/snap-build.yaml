@@ -32,12 +32,17 @@ concurrency:
 
 jobs:
   build:
-    name: ${{ matrix.arch }}
+    name: ${{ matrix.build-from }} / ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
+        arch: [amd64, arm64]
+        build-from: >-
+          ${{ github.event_name == 'pull_request'
+              && fromJSON('["tag", "head"]')
+              || fromJSON(format('[{0}]', toJSON(inputs.build-from))) }}
         include:
           - arch: amd64
             runner: ubuntu-24.04
@@ -49,7 +54,7 @@ jobs:
           persist-credentials: false
 
       - name: Prepare upstream HEAD
-        if: inputs.build-from == 'head'
+        if: matrix.build-from == 'head'
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-yaml
@@ -117,7 +122,7 @@ jobs:
 
       - name: Check source and show snapcraft.yaml
         env:
-          BUILD_FROM: ${{ inputs.build-from }}
+          BUILD_FROM: ${{ matrix.build-from }}
         run: |
           if [[ "$BUILD_FROM" != tag && "$BUILD_FROM" != head ]]; then
             echo 'build-from must be tag or head' >&2
@@ -140,19 +145,19 @@ jobs:
           sudo snap install --dangerous "$SNAP_FILE"
           bash -euo pipefail -c "$TEST_COMMAND"
 
-      - name: Read snap name
+      - name: Read artifact name
         id: metadata
         env:
           SNAP_FILE: ${{ steps.snap.outputs.snap }}
         run: |
           # Snapcraft names packages <name>_<version>_<arch>.snap.
-          filename=$(basename "$SNAP_FILE")
-          echo "name=${filename%%_*}" >> "$GITHUB_OUTPUT"
+          filename=$(basename "$SNAP_FILE" .snap)
+          echo "name=${filename//_/-}" >> "$GITHUB_OUTPUT"
 
       - name: Save snap
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.metadata.outputs.name }}-${{ matrix.arch }}
+          name: ${{ steps.metadata.outputs.name }}
           path: ${{ steps.snap.outputs.snap }}
           if-no-files-found: error
 
