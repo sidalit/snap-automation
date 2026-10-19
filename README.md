@@ -22,7 +22,7 @@ on:
         default: tag
 jobs:
   snap:
-    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.3
+    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.4
     with:
       build-from: ${{ inputs.build-from || 'tag' }}
       channel: beta
@@ -51,8 +51,9 @@ prevents that architecture from publishing.
 
 The manual caller offers a dropdown; reusable workflows require a string input.
 For weekly HEAD builds, see the [OpenSpec caller](https://github.com/sidalit/openspec-snap/blob/main/.github/workflows/snap-build.yaml).
-Runs of the same workflow/ref are serialized: an active run finishes, while newer
-runs can replace an older pending run.
+Different source/channel combinations can run in parallel, such as automatic
+tag/beta and manual head/edge. Runs with the same workflow/ref/source/channel
+are serialized; a newer pending run can replace an older pending run.
 
 For a specific check, pass a command such as:
 
@@ -66,7 +67,7 @@ Add `renovate.json`:
 
 ```json
 {
-  "extends": ["github>sidalit/snap-automation#v1.0.3"],
+  "extends": ["github>sidalit/snap-automation#v1.0.4"],
   "assignees": ["your-github-username"]
 }
 ```
