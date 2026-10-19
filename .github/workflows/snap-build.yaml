@@ -150,7 +150,7 @@ jobs:
           echo "name=${filename%%_*}" >> "$GITHUB_OUTPUT"
 
       - name: Save snap
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.metadata.outputs.name }}-${{ matrix.arch }}
           path: ${{ steps.snap.outputs.snap }}
