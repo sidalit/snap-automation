@@ -1,0 +1,145 @@
+name: Snap build
+
+on:
+  workflow_call:
+    inputs:
+      build-from:
+        description: Build the recipe tag or upstream HEAD (tag/head).
+        type: string
+        default: tag
+      channel:
+        description: Store channel. Leave empty to build only.
+        type: string
+        default: ''
+      test-command:
+        description: Optional command to run after installing the snap.
+        type: string
+        default: ''
+    secrets:
+      SNAPCRAFT_STORE_CREDENTIALS:
+        required: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: snap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare upstream HEAD
+        if: inputs.build-from == 'head'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-yaml
+
+          python3 <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+          import yaml
+
+          path = Path('snap/snapcraft.yaml')
+          recipe = yaml.safe_load(path.read_text())
+          parts = recipe['parts']
+          tagged = [(name, part) for name, part in parts.items() if 'source-tag' in part]
+
+          if len(tagged) != 1:
+              raise SystemExit('HEAD builds need exactly one part with source-tag.')
+
+          name, part = tagged[0]
+          result = subprocess.check_output(
+              ['git', 'ls-remote', '--exit-code', part['source'], 'HEAD'],
+              text=True,
+              timeout=60,
+          )
+          commit = result.split()[0]
+          source = {key: value for key, value in part.items() if key != 'source-tag'}
+          recipe = {
+              **recipe,
+              'grade': 'devel',
+              'parts': {**parts, name: {**source, 'source-commit': commit}},
+          }
+
+          if 'version' in recipe:
+              version = str(recipe['version'])[:24]
+              recipe = {**recipe, 'version': f'{version}-{commit[:7]}'}
+
+          path.write_text(yaml.safe_dump(recipe, sort_keys=False))
+          print(f'Building upstream commit {commit}')
+          PYTHON
+
+      - name: Check source and show snapcraft.yaml
+        env:
+          BUILD_FROM: ${{ inputs.build-from }}
+        run: |
+          if [[ "$BUILD_FROM" != tag && "$BUILD_FROM" != head ]]; then
+            echo 'build-from must be tag or head' >&2
+            exit 1
+          fi
+          cat snap/snapcraft.yaml
+
+      - name: Build snap
+        id: snap
+        uses: canonical/action-build@v1
+        with:
+          build-info: true
+
+      - name: Run optional command
+        if: inputs.test-command != ''
+        env:
+          SNAP_FILE: ${{ steps.snap.outputs.snap }}
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: |
+          sudo snap install --dangerous "$SNAP_FILE"
+          bash -euo pipefail -c "$TEST_COMMAND"
+
+      - name: Read snap name
+        id: metadata
+        env:
+          SNAP_FILE: ${{ steps.snap.outputs.snap }}
+        run: |
+          # Snapcraft names packages <name>_<version>_<arch>.snap.
+          filename=$(basename "$SNAP_FILE")
+          echo "name=${filename%%_*}" >> "$GITHUB_OUTPUT"
+
+      - name: Save snap
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.metadata.outputs.name }}-${{ matrix.arch }}
+          path: ${{ steps.snap.outputs.snap }}
+          if-no-files-found: error
+
+      - name: Publish snap
+        if: >-
+          inputs.channel != '' &&
+          github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+          contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event_name)
+        timeout-minutes: 15
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          SNAP_FILE: ${{ steps.snap.outputs.snap }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          sudo snap install snapcraft --classic
+          snapcraft upload "$SNAP_FILE" --release "$CHANNEL"
