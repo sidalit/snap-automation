@@ -99,7 +99,7 @@ jobs:
               replacement = (
                   f'{indent}snap_head_version={expression}\n'
                   f"{indent}snap_head_version=$(printf '%s' \"$snap_head_version\" | sed -E 's/-[0-9]+-g[0-9a-f]+$//')\n"
-                  f'{indent}craftctl set version="${{snap_head_version:0:24}}-{commit[:7]}"'
+                  f"{indent}craftctl set version=\"$(printf '%.24s' \"$snap_head_version\")-{commit[:7]}\""
               )
               script = metadata[step]
               updated = script[:match.start()] + replacement + script[match.end():]

@@ -22,7 +22,7 @@ on:
         default: tag
 jobs:
   snap:
-    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.2
+    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.0.3
     with:
       build-from: ${{ inputs.build-from || 'tag' }}
       channel: beta
@@ -66,7 +66,7 @@ Add `renovate.json`:
 
 ```json
 {
-  "extends": ["github>sidalit/snap-automation#v1.0.2"],
+  "extends": ["github>sidalit/snap-automation#v1.0.3"],
   "assignees": ["your-github-username"]
 }
 ```
