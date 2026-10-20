@@ -49,6 +49,7 @@ including when HEAD is a release tag. Recipes using `adopt-info` need one standa
 The recipe is printed before building. Artifacts use `<snap-name>-<version>-<arch>`;
 HEAD versions include the commit hash, for example `pocketbase-0.40.5-6f370ea-amd64`.
 A failed build or optional command prevents that job from publishing.
+Failed builds print the full Snapcraft logs in the job output.
 
 The manual caller offers a dropdown; reusable workflows require a string input.
 For weekly HEAD builds, see the [OpenSpec caller](https://github.com/sidalit/openspec-snap/blob/main/.github/workflows/snap-build.yaml).

@@ -136,6 +136,23 @@ jobs:
         with:
           build-info: true
 
+      - name: Show Snapcraft logs on failure
+        if: failure() && steps.snap.outcome == 'failure'
+        run: |
+          shopt -s nullglob
+          logs=("${XDG_STATE_HOME:-$HOME/.local/state}"/snapcraft/log/*.log)
+          if (( ${#logs[@]} == 0 )); then
+            echo 'No Snapcraft log files were created.'
+          fi
+          for log in "${logs[@]}"; do
+            echo "::group::Snapcraft log: $(basename "$log")"
+            stop_token=$(cat /proc/sys/kernel/random/uuid)
+            echo "::stop-commands::$stop_token"
+            cat "$log"
+            printf '\n::%s::\n' "$stop_token"
+            echo '::endgroup::'
+          done
+
       - name: Run optional command
         if: inputs.test-command != ''
         env:
