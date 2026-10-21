@@ -7,10 +7,10 @@ on:
         description: Build the recipe tag or upstream HEAD (tag/head).
         type: string
         default: tag
-      channel:
-        description: Store channel. Leave empty to build only.
-        type: string
-        default: ''
+      publish:
+        description: Publish to edge for HEAD or beta for a release tag.
+        type: boolean
+        default: false
       test-command:
         description: Optional command to run after installing the snap.
         type: string
@@ -27,7 +27,7 @@ defaults:
     shell: bash
 
 concurrency:
-  group: snap-${{ github.workflow }}-${{ github.ref }}-${{ inputs.build-from }}-${{ inputs.channel }}
+  group: snap-${{ github.workflow }}-${{ github.ref }}-${{ inputs.build-from }}-${{ inputs.publish }}
   cancel-in-progress: false
 
 jobs:
@@ -45,80 +45,39 @@ jobs:
               || fromJSON(format('[{0}]', toJSON(inputs.build-from))) }}
         include:
           - arch: amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
     steps:
-      - uses: actions/checkout@v7
+      - name: Fetch packaging
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Prepare upstream HEAD
+        id: prepare
         if: matrix.build-from == 'head'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-yaml
+          recipe=snap/snapcraft.yaml
+          if ! upstream=$(yq -er '
+            [.parts[] | select(.source-tag // "" | contains("SNAPCRAFT_PROJECT_VERSION"))] |
+            select(length == 1) | .[0].source
+          ' "$recipe"); then
+            echo '::error::Exactly one part must reference SNAPCRAFT_PROJECT_VERSION in source-tag.'
+            exit 1
+          fi
+          commit=$(timeout 60 git ls-remote --exit-code -- "$upstream" HEAD | cut -f1)
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          export SNAP_COMMIT="$commit" SNAP_VERSION="git-${commit:0:7}"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-          python3 <<'PYTHON'
-          from pathlib import Path
-          import re
-          import subprocess
-          import yaml
-
-          path = Path('snap/snapcraft.yaml')
-          recipe = yaml.safe_load(path.read_text())
-          parts = recipe['parts']
-          tagged = [(name, part) for name, part in parts.items() if 'source-tag' in part]
-
-          if len(tagged) != 1:
-              raise SystemExit('HEAD builds need exactly one part with source-tag.')
-
-          name, part = tagged[0]
-          result = subprocess.check_output(
-              ['git', 'ls-remote', '--exit-code', part['source'], 'HEAD'],
-              text=True,
-              timeout=60,
-          )
-          commit = result.split()[0]
-          source = {key: value for key, value in part.items() if key != 'source-tag'}
-          recipe = {
-              **recipe,
-              'grade': 'devel',
-              'parts': {**parts, name: {**source, 'source-commit': commit}},
-          }
-
-          if 'adopt-info' in recipe:
-              adopt = recipe['adopt-info']
-              metadata = recipe['parts'][adopt]
-              setter = re.compile(r'^([ \t]*)craftctl set version=(.+)$', re.MULTILINE)
-              matches = [
-                  (step, match)
-                  for step, script in metadata.items() if step.startswith('override-')
-                  for match in setter.finditer(script)
-              ]
-              if len(matches) != 1:
-                  raise SystemExit('HEAD builds need one standalone craftctl set version command in the adopt-info part.')
-
-              step, match = matches[0]
-              indent, expression = match.groups()
-              replacement = (
-                  f'{indent}snap_head_version={expression}\n'
-                  f"{indent}snap_head_version=$(printf '%s' \"$snap_head_version\" | sed -E 's/-[0-9]+-g[0-9a-f]+$//')\n"
-                  f"{indent}craftctl set version=\"$(printf '%.24s' \"$snap_head_version\")-{commit[:7]}\""
-              )
-              script = metadata[step]
-              updated = script[:match.start()] + replacement + script[match.end():]
-              recipe = {
-                  **recipe,
-                  'parts': {**recipe['parts'], adopt: {**metadata, step: updated}},
-              }
-          else:
-              version = str(recipe['version'])[:24]
-              recipe = {**recipe, 'version': f'{version}-{commit[:7]}'}
-
-          path.write_text(yaml.safe_dump(recipe, sort_keys=False))
-          print(f'Building upstream commit {commit}')
-          PYTHON
+          yq -i '
+            .version = strenv(SNAP_VERSION) |
+            .grade = "devel" |
+            with(.parts[] | select(.source-tag // "" | contains("SNAPCRAFT_PROJECT_VERSION"));
+              .source-commit = strenv(SNAP_COMMIT) | del(.source-tag)
+            )
+          ' "$recipe"
 
       - name: Check source and show snapcraft.yaml
         env:
@@ -135,6 +94,7 @@ jobs:
         uses: canonical/action-build@v1
         with:
           build-info: true
+          snapcraft-args: "pack --verbose"
 
       - name: Show Snapcraft logs on failure
         if: failure() && steps.snap.outcome == 'failure'
@@ -153,7 +113,28 @@ jobs:
             echo '::endgroup::'
           done
 
-      - name: Run optional command
+      - name: Read artifact name
+        id: metadata
+        env:
+          SNAP_FILE: ${{ steps.snap.outputs.snap }}
+        run: |
+          # Snapcraft names packages <name>_<version>_<arch>.snap.
+          filename=$(basename "$SNAP_FILE" .snap)
+          version=${filename#*_}
+          version=${version%_*}
+          echo "name=${filename//_/-}" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Save snap
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.metadata.outputs.name }}
+          path: ${{ steps.snap.outputs.snap }}
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Test snap (optional)
+        id: test
         if: inputs.test-command != ''
         env:
           SNAP_FILE: ${{ steps.snap.outputs.snap }}
@@ -162,32 +143,42 @@ jobs:
           sudo snap install --dangerous "$SNAP_FILE"
           bash -euo pipefail -c "$TEST_COMMAND"
 
-      - name: Read artifact name
-        id: metadata
-        env:
-          SNAP_FILE: ${{ steps.snap.outputs.snap }}
-        run: |
-          # Snapcraft names packages <name>_<version>_<arch>.snap.
-          filename=$(basename "$SNAP_FILE" .snap)
-          echo "name=${filename//_/-}" >> "$GITHUB_OUTPUT"
-
-      - name: Save snap
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ steps.metadata.outputs.name }}
-          path: ${{ steps.snap.outputs.snap }}
-          if-no-files-found: error
-
       - name: Publish snap
+        id: publish
         if: >-
-          inputs.channel != '' &&
+          inputs.publish &&
           github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
           contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event_name)
+        uses: canonical/action-publish@v1
         timeout-minutes: 30
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-          SNAP_FILE: ${{ steps.snap.outputs.snap }}
-          CHANNEL: ${{ inputs.channel }}
+        with:
+          snap: ${{ steps.snap.outputs.snap }}
+          release: ${{ matrix.build-from == 'head' && 'edge' || 'beta' }}
+
+      - name: Summarize result
+        if: always()
+        env:
+          ARTIFACT: ${{ steps.metadata.outputs.name || 'Not built' }}
+          VERSION: ${{ steps.metadata.outputs.version || 'Unavailable' }}
+          ARCH: ${{ matrix.arch }}
+          BUILD_FROM: ${{ matrix.build-from }}
+          UPSTREAM_COMMIT: ${{ matrix.build-from == 'head' && (steps.prepare.outputs.commit || 'Unresolved') || 'Recipe release tag' }}
+          BUILD_RESULT: ${{ steps.snap.outcome }}
+          TEST_RESULT: ${{ inputs.test-command == '' && 'not configured' || steps.test.outcome }}
+          PUBLISH_RESULT: ${{ !inputs.publish && 'disabled' || steps.publish.outcome }}
+          CHANNEL: ${{ matrix.build-from == 'head' && 'edge' || 'beta' }}
         run: |
-          sudo snap install snapcraft --classic
-          snapcraft upload "$SNAP_FILE" --release "$CHANNEL"
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ### $BUILD_FROM / $ARCH
+
+          | Item | Result |
+          |---|---|
+          | Artifact | $ARTIFACT |
+          | Version | $VERSION |
+          | Upstream | $UPSTREAM_COMMIT |
+          | Build | $BUILD_RESULT |
+          | Test | $TEST_RESULT |
+          | Publish ($CHANNEL) | $PUBLISH_RESULT |
+          EOF

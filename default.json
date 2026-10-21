@@ -1,33 +1,29 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "Shared Renovate rules for snap repositories",
-  "extends": [
-    "config:recommended"
-  ],
+  "extends": ["config:recommended"],
   "dependencyDashboard": false,
   "assignAutomerge": true,
   "customManagers": [
     {
-      "customType": "regex",
-      "description": "Upstream release pinned by source-tag in snapcraft.yaml",
-      "managerFilePatterns": [
-        "/(^|/)snap/snapcraft\\.yaml$/"
-      ],
+      "customType": "jsonata",
+      "description": "Update version from the part using SNAPCRAFT_PROJECT_VERSION",
+      "fileFormat": "yaml",
+      "managerFilePatterns": ["snap/snapcraft.yaml"],
       "matchStrings": [
-        "#\\s*renovate:\\s*(?:datasource=(?<datasource>\\S+)\\s+)?depName=(?<depName>\\S+)\\s*\\n\\s*source-tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"
+        "$.{'depName': parts.*[$contains(`source-tag`, 'SNAPCRAFT_PROJECT_VERSION')].source ~> $substringAfter('https://github.com/') ~> $replace(/\\.git$/, ''), 'currentValue': version}"
       ],
-      "datasourceTemplate": "{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}"
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "extractVersionTemplate": "^v?(?<version>.+)$"
     }
   ],
   "packageRules": [
     {
       "description": "Merge upstream release updates after checks pass",
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true
+      "matchManagers": ["custom.jsonata"],
+      "matchFileNames": ["snap/snapcraft.yaml"],
+      "automerge": true
     }
   ]
 }
