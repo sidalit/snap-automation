@@ -38,6 +38,8 @@ jobs:
 
 Add `SNAPCRAFT_STORE_CREDENTIALS` in the repository's Actions secrets to publish.
 Pushes publish the release tag to `beta`; weekly runs publish `HEAD` to `edge`.
+Snap components are saved and uploaded with their snap; the Snap Store must
+enable components for the snap first.
 
 | Input | Default | Purpose |
 |---|---|---|

@@ -130,7 +130,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.metadata.outputs.name }}
-          path: ${{ steps.snap.outputs.snaps }}
+          path: |
+            ${{ steps.snap.outputs.snaps }}
+            *.comp
           if-no-files-found: error
           compression-level: 0
 
@@ -150,13 +152,25 @@ jobs:
           inputs.publish &&
           github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
           contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event_name)
-        uses: canonical/action-publish@v1
         timeout-minutes: 45
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        with:
-          snap: ${{ steps.snap.outputs.snaps }}
-          release: ${{ matrix.build-from == 'head' && 'edge' || 'beta' }}
+          SNAP_FILE: ${{ steps.snap.outputs.snaps }}
+          COMPONENTS: ${{ steps.snap.outputs.components }}
+          CHANNEL: ${{ matrix.build-from == 'head' && 'edge' || 'beta' }}
+        run: |
+          # Components are uploaded with their snap: <snap>+<name>[_<version>].comp
+          args=()
+          for comp in $COMPONENTS; do
+            if (( $(stat -c%s "$comp") > 5 * 1024 ** 3 )); then
+              echo "::error::$comp exceeds the Snap Store's 5 GB component limit."
+              exit 1
+            fi
+            name=${comp##*+}
+            name=${name%.comp}
+            args+=(--component "${name%%_*}=$comp")
+          done
+          snapcraft upload "$SNAP_FILE" "${args[@]}" --release "$CHANNEL"
 
       - name: Summarize result
         if: always()
