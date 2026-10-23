@@ -170,7 +170,10 @@ jobs:
             name=${name%.comp}
             args+=(--component "${name%%_*}=$comp")
           done
-          snapcraft upload "$SNAP_FILE" "${args[@]}" --release "$CHANNEL"
+          # snapcraft prints only "Revision <n> created for ..." to stdout.
+          snapcraft upload "$SNAP_FILE" "${args[@]}" --release "$CHANNEL" \
+            2> >(sed -u '/^Status: processing\r*$/d' >&2) |
+            tee /dev/stderr | sed -nE 's/^Revision ([0-9]+) created.*/revision=\1/p' >> "$GITHUB_OUTPUT"
 
       - name: Summarize result
         if: always()
@@ -184,6 +187,7 @@ jobs:
           TEST_RESULT: ${{ inputs.test-command == '' && 'not configured' || steps.test.outcome }}
           PUBLISH_RESULT: ${{ !inputs.publish && 'disabled' || steps.publish.outcome }}
           CHANNEL: ${{ matrix.build-from == 'head' && 'edge' || 'beta' }}
+          REVISION: ${{ !inputs.publish && 'disabled' || steps.publish.outputs.revision || 'none' }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ### $BUILD_FROM / $ARCH
@@ -196,4 +200,5 @@ jobs:
           | Build | $BUILD_RESULT |
           | Test | $TEST_RESULT |
           | Publish ($CHANNEL) | $PUBLISH_RESULT |
+          | Revision | $REVISION |
           EOF
