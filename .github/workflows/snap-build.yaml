@@ -114,6 +114,26 @@ jobs:
             echo '::endgroup::'
           done
 
+      - name: Show runner diagnostics on failure
+        if: failure() && steps.snap.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          echo '::group::Runner diagnostics'
+          stop_token=$(cat /proc/sys/kernel/random/uuid)
+          echo "::stop-commands::$stop_token"
+          free -h || true
+          df -h / || true
+          echo 'Kernel messages:'
+          timeout --kill-after=5s 20s sudo -n journalctl --boot --dmesg \
+            --since '2 hours ago' --lines=300 --no-pager || true
+          echo 'LXD and OOM service messages:'
+          timeout --kill-after=5s 20s sudo -n journalctl --boot \
+            --unit=snap.lxd.daemon.service --unit=systemd-oomd.service \
+            --since '2 hours ago' --lines=300 --no-pager || true
+          printf '\n::%s::\n' "$stop_token"
+          echo '::endgroup::'
+
       - name: Read artifact name
         id: metadata
         env:
