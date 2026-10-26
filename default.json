@@ -7,12 +7,13 @@
   "customManagers": [
     {
       "customType": "jsonata",
-      "description": "Update version from the part using SNAPCRAFT_PROJECT_VERSION",
+      "description": "Update the snap version from the repository's configured upstream",
       "fileFormat": "yaml",
       "managerFilePatterns": ["snap/snapcraft.yaml"],
       "matchStrings": [
-        "$.{'depName': parts.*[$contains(`source-tag`, 'SNAPCRAFT_PROJECT_VERSION')].source ~> $substringAfter('https://github.com/') ~> $replace(/\\.git$/, ''), 'currentValue': version}"
+        "$.{'currentValue': version}"
       ],
+      "depNameTemplate": "upstream",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver",
       "extractVersionTemplate": "^v?(?<version>.+)$"
@@ -21,8 +22,8 @@
   "packageRules": [
     {
       "description": "Merge upstream release updates after checks pass",
-      "matchManagers": ["custom.jsonata"],
-      "matchFileNames": ["snap/snapcraft.yaml"],
+      "matchDepNames": ["upstream"],
+      "commitMessageTopic": "{{{packageName}}}",
       "automerge": true
     }
   ]

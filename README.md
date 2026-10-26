@@ -75,12 +75,21 @@ Add `renovate.json`:
 ```json
 {
   "extends": ["github>sidalit/snap-automation#v1.1.0"],
-  "assignees": ["your-github-username"]
+  "assignees": ["your-github-username"],
+  "packageRules": [
+    {
+      "matchDepNames": ["upstream"],
+      "overridePackageName": "pocketbase/pocketbase"
+    }
+  ]
 }
 ```
 
-Renovate reads the upstream GitHub URL from the part using `SNAPCRAFT_PROJECT_VERSION`
-and updates `version` from releases using `semver`.
+Set `overridePackageName` to the upstream GitHub `owner/repo`.
+Renovate updates `version` in `snapcraft.yaml` from releases using `semver`.
+For custom tags such as `spec-v4.4.26`, add `"extractVersion": "^spec-v(?<version>.+)$"`
+to the same rule.
+Repository rules extend the shared defaults.
 
 ## Releases
 
