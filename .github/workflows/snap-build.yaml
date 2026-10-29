@@ -3,6 +3,10 @@ name: Snap build
 on:
   workflow_call:
     inputs:
+      architectures:
+        description: JSON array of architectures to build (amd64, arm64).
+        type: string
+        default: '["amd64", "arm64"]'
       build-from:
         description: Build the recipe tag or upstream HEAD (tag/head).
         type: string
@@ -33,21 +37,17 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.build-from }} / ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: >-
+      ${{ fromJSON('{"amd64": "ubuntu-26.04", "arm64": "ubuntu-26.04-arm"}')[matrix.arch] }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        arch: ${{ fromJSON(inputs.architectures) }}
         build-from: >-
           ${{ github.event_name == 'pull_request'
               && fromJSON('["tag", "head"]')
               || fromJSON(format('[{0}]', toJSON(inputs.build-from))) }}
-        include:
-          - arch: amd64
-            runner: ubuntu-26.04
-          - arch: arm64
-            runner: ubuntu-26.04-arm
     steps:
       - name: Fetch packaging
         uses: actions/checkout@v7

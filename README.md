@@ -1,12 +1,12 @@
 # snap-automation
 
-Build and publish amd64 and arm64 in parallel. Each source/architecture runs
+Build and publish amd64 and arm64 in parallel by default. Each source/architecture runs
 fetch, prepare, build, optional test, and publish steps in one job. Only HEAD
 builds need source preparation.
 
 ## Use it
 
-The repository needs `snap/snapcraft.yaml` configured for amd64 and arm64.
+The repository needs `snap/snapcraft.yaml` configured for the selected architectures.
 Add `.github/workflows/snap-build.yaml`:
 
 ```yaml
@@ -28,7 +28,7 @@ on:
         default: false
 jobs:
   snap:
-    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.1.0
+    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.2.0
     with:
       build-from: ${{ github.event_name == 'schedule' && 'head' || inputs.build-from || 'tag' }}
       publish: ${{ github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish == true }}
@@ -43,9 +43,12 @@ enable components for the snap first.
 
 | Input | Default | Purpose |
 |---|---|---|
+| `architectures` | `["amd64", "arm64"]` | JSON array of architectures to build: `amd64`, `arm64`, or both. |
 | `build-from` | `tag` | Use the recipe tag or upstream `head`. PRs always build both. |
 | `publish` | `false` | Publish to `edge` for HEAD or `beta` for the release tag. |
 | `test-command` | empty | Optional command after installing the snap. Nothing runs by default. |
+
+For AMD64 only, add `architectures: '["amd64"]'` under `with`.
 
 Declare the release version once and reuse it in the upstream tag:
 
@@ -74,7 +77,7 @@ Add `renovate.json`:
 
 ```json
 {
-  "extends": ["github>sidalit/snap-automation#v1.1.0"],
+  "extends": ["github>sidalit/snap-automation#v1.2.0"],
   "assignees": ["your-github-username"],
   "packageRules": [
     {
