@@ -37,14 +37,15 @@ jobs:
 ```
 
 Add `SNAPCRAFT_STORE_CREDENTIALS` in the repository's Actions secrets to publish.
-Pushes publish the release tag to `beta`; weekly runs publish `HEAD` to `edge`.
+Pushes to the default branch publish the release tag to `beta` and `HEAD` to `edge`.
+Weekly runs publish `HEAD` to `edge`.
 Snap components are saved and uploaded with their snap; the Snap Store must
 enable components for the snap first.
 
 | Input | Default | Purpose |
 |---|---|---|
 | `architectures` | `["amd64", "arm64"]` | JSON array of architectures to build: `amd64`, `arm64`, or both. |
-| `build-from` | `tag` | Use the recipe tag or upstream `head`. PRs always build both. |
+| `build-from` | `tag` | Use the recipe tag or upstream `head`. PRs and pushes to the default branch build both. |
 | `publish` | `false` | Publish to `edge` for HEAD or `beta` for the release tag. |
 | `test-command` | empty | Optional command after installing the snap. Nothing runs by default. |
 

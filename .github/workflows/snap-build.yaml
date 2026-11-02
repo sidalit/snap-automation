@@ -45,7 +45,9 @@ jobs:
       matrix:
         arch: ${{ fromJSON(inputs.architectures) }}
         build-from: >-
-          ${{ github.event_name == 'pull_request'
+          ${{ (github.event_name == 'pull_request'
+              || (github.event_name == 'push'
+                  && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
               && fromJSON('["tag", "head"]')
               || fromJSON(format('[{0}]', toJSON(inputs.build-from))) }}
     steps:
