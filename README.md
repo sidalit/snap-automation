@@ -21,24 +21,34 @@ on:
     inputs:
       build-from:
         type: choice
-        options: [tag, head]
-        default: tag
+        options: [tag, head, both]
+        default: both
       publish:
         type: boolean
         default: false
 jobs:
   snap:
-    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.2.1
-    with:
-      build-from: ${{ github.event_name == 'schedule' && 'head' || inputs.build-from || 'tag' }}
-      publish: ${{ github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish == true }}
+    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.3.0
     secrets:
       SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
 ```
 
 Add `SNAPCRAFT_STORE_CREDENTIALS` in the repository's Actions secrets to publish.
-Pushes to the default branch publish the release tag to `beta` and `HEAD` to `edge`.
-Weekly runs publish `HEAD` to `edge`.
+By default, the shared workflow builds both sources on PRs and pushes, HEAD on
+weekly runs, and the source selected in the caller's manual dropdown. An explicit
+`with.build-from` overrides these defaults for every event. Tag builds publish to
+`beta`; HEAD builds publish to `edge`.
+
+| Event | Publishing |
+|---|---|
+| Pull request | Never. |
+| Push to the default branch | Automatic. |
+| Schedule | Automatic. |
+| Manual run | Only when `publish` is selected, on the default branch. |
+
+Other branches and events never publish. Publishing runs only after successful
+build and test steps.
+
 Snap components are saved and uploaded with their snap; the Snap Store must
 enable components for the snap first.
 If an upload loses its connection to the Snap Store before the store starts
@@ -48,11 +58,14 @@ or review failures, fail at once.
 | Input | Default | Purpose |
 |---|---|---|
 | `architectures` | `["amd64", "arm64"]` | JSON array of architectures to build: `amd64`, `arm64`, or both. |
-| `build-from` | `tag` | Use the recipe tag or upstream `head`. PRs and pushes to the default branch build both. |
-| `publish` | `false` | Publish to `edge` for HEAD or `beta` for the release tag. |
+| `build-from` | Manual selection, otherwise `head` for schedules or `both` | `tag` builds only the recipe tag, `head` builds only upstream HEAD, and `both` builds them in parallel. |
+| `publish` | Manual checkbox, otherwise `false` | Publish manual runs. Pushes and schedules publish automatically; PRs never publish. |
 | `test-command` | empty | Optional command after installing the snap. Nothing runs by default. |
 
 For AMD64 only, add `architectures: '["amd64"]'` under `with`.
+
+For release-only packages, set `build-from: tag` under `with`. This also applies
+to PRs and scheduled runs and does not require HEAD source preparation.
 
 Declare the release version once and reuse it in the upstream tag:
 
@@ -81,7 +94,7 @@ Add `renovate.json`:
 
 ```json
 {
-  "extends": ["github>sidalit/snap-automation#v1.2.1"],
+  "extends": ["github>sidalit/snap-automation#v1.3.0"],
   "assignees": ["your-github-username"],
   "packageRules": [
     {

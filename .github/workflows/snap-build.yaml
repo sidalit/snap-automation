@@ -8,13 +8,15 @@ on:
         type: string
         default: '["amd64", "arm64"]'
       build-from:
-        description: Build the recipe tag or upstream HEAD (tag/head).
+        description: Build the recipe tag, upstream HEAD, or both (tag/head/both).
         type: string
-        default: tag
+        default: >-
+          ${{ github.event.inputs.build-from ||
+              (github.event_name == 'schedule' && 'head' || 'both') }}
       publish:
-        description: Publish to edge for HEAD or beta for a release tag.
+        description: Publish a manual build to edge for HEAD or beta for a release tag.
         type: boolean
-        default: false
+        default: ${{ github.event.inputs.publish == 'true' }}
       test-command:
         description: Optional command to run after installing the snap.
         type: string
@@ -31,7 +33,7 @@ defaults:
     shell: bash
 
 concurrency:
-  group: snap-${{ github.workflow }}-${{ github.ref }}-${{ inputs.build-from }}-${{ inputs.publish }}
+  group: snap-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.build-from }}-${{ inputs.publish }}
   cancel-in-progress: false
 
 jobs:
@@ -45,9 +47,7 @@ jobs:
       matrix:
         arch: ${{ fromJSON(inputs.architectures) }}
         build-from: >-
-          ${{ (github.event_name == 'pull_request'
-              || (github.event_name == 'push'
-                  && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
+          ${{ inputs.build-from == 'both'
               && fromJSON('["tag", "head"]')
               || fromJSON(format('[{0}]', toJSON(inputs.build-from))) }}
     steps:
@@ -83,10 +83,10 @@ jobs:
 
       - name: Check source and show snapcraft.yaml
         env:
-          BUILD_FROM: ${{ matrix.build-from }}
+          BUILD_FROM: ${{ inputs.build-from }}
         run: |
-          if [[ "$BUILD_FROM" != tag && "$BUILD_FROM" != head ]]; then
-            echo 'build-from must be tag or head' >&2
+          if [[ "$BUILD_FROM" != tag && "$BUILD_FROM" != head && "$BUILD_FROM" != both ]]; then
+            echo 'build-from must be tag, head or both' >&2
             exit 1
           fi
           cat snap/snapcraft.yaml
@@ -171,9 +171,9 @@ jobs:
       - name: Publish snap
         id: publish
         if: >-
-          inputs.publish &&
           github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
-          contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event_name)
+          (contains(fromJSON('["push", "schedule"]'), github.event_name) ||
+           (github.event_name == 'workflow_dispatch' && inputs.publish))
         timeout-minutes: 45
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
@@ -228,9 +228,9 @@ jobs:
           UPSTREAM_COMMIT: ${{ matrix.build-from == 'head' && (steps.prepare.outputs.commit || 'Unresolved') || 'Recipe release tag' }}
           BUILD_RESULT: ${{ steps.snap.outcome }}
           TEST_RESULT: ${{ inputs.test-command == '' && 'not configured' || steps.test.outcome }}
-          PUBLISH_RESULT: ${{ !inputs.publish && 'disabled' || steps.publish.outcome }}
+          PUBLISH_RESULT: ${{ steps.publish.outcome || 'skipped' }}
           CHANNEL: ${{ matrix.build-from == 'head' && 'edge' || 'beta' }}
-          REVISION: ${{ !inputs.publish && 'disabled' || steps.publish.outputs.revision || 'none' }}
+          REVISION: ${{ steps.publish.outputs.revision || 'none' }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ### $BUILD_FROM / $ARCH
