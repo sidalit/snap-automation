@@ -28,7 +28,7 @@ on:
         default: false
 jobs:
   snap:
-    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.2.0
+    uses: sidalit/snap-automation/.github/workflows/snap-build.yaml@v1.2.1
     with:
       build-from: ${{ github.event_name == 'schedule' && 'head' || inputs.build-from || 'tag' }}
       publish: ${{ github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish == true }}
@@ -41,6 +41,9 @@ Pushes to the default branch publish the release tag to `beta` and `HEAD` to `ed
 Weekly runs publish `HEAD` to `edge`.
 Snap components are saved and uploaded with their snap; the Snap Store must
 enable components for the snap first.
+If an upload loses its connection to the Snap Store before the store starts
+processing it, publishing retries up to twice. Store errors, such as permission
+or review failures, fail at once.
 
 | Input | Default | Purpose |
 |---|---|---|
@@ -78,7 +81,7 @@ Add `renovate.json`:
 
 ```json
 {
-  "extends": ["github>sidalit/snap-automation#v1.2.0"],
+  "extends": ["github>sidalit/snap-automation#v1.2.1"],
   "assignees": ["your-github-username"],
   "packageRules": [
     {

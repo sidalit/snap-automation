@@ -192,10 +192,31 @@ jobs:
             name=${name%.comp}
             args+=(--component "${name%%_*}=$comp")
           done
-          # snapcraft prints only "Revision <n> created for ..." to stdout.
-          snapcraft upload "$SNAP_FILE" "${args[@]}" --release "$CHANNEL" \
-            2> >(sed -u '/^Status: processing\r*$/d' >&2) |
-            tee /dev/stderr | sed -nE 's/^Revision ([0-9]+) created.*/revision=\1/p' >> "$GITHUB_OUTPUT"
+          # Retry only network failures that happen before the store starts
+          # processing the upload, which it reports with "Status:" lines. Store
+          # answers, such as permission or review errors, fail at once.
+          network_errors=(
+            -e "('Connection aborted.', "
+            -e 'Maximum retries exceeded trying to reach the store.'
+            -e 'Issue encountered while processing your request: [502]'
+            -e 'Issue encountered while processing your request: [503]'
+            -e 'Issue encountered while processing your request: [504]'
+          )
+          output=$(mktemp)
+          for attempt in 1 2 3; do
+            if snapcraft upload "$SNAP_FILE" "${args[@]}" --release "$CHANNEL" 2>&1 |
+              tee "$output" | sed -u '/^Status: processing\r*$/d'; then
+              sed -nE 's/^Revision ([0-9]+) created.*/revision=\1/p' "$output" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if (( attempt == 3 )) || grep -q '^Status: ' "$output" ||
+              ! grep -Fq "${network_errors[@]}" "$output"; then
+              exit 1
+            fi
+            delay=$((attempt * 60))
+            echo "::warning::Upload attempt $attempt lost the Snap Store connection; retrying in $delay seconds."
+            sleep "$delay"
+          done
 
       - name: Summarize result
         if: always()
