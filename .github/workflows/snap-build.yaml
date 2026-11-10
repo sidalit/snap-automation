@@ -185,6 +185,7 @@ jobs:
         timeout-minutes: 45
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          CRAFT_STORE_RETRIES: '10'
           SNAP_FILE: ${{ steps.snap.outputs.snaps }}
           COMPONENTS: ${{ steps.snap.outputs.components }}
           CHANNEL: ${{ matrix.build-from == 'head' && 'edge' || 'beta' }}
@@ -200,17 +201,24 @@ jobs:
             name=${name%.comp}
             args+=(--component "${name%%_*}=$comp")
           done
-          # Retry only network failures that happen before the store starts
-          # processing the upload, which it reports with "Status:" lines. Store
-          # answers, such as permission or review errors, fail at once.
+          # Retry transport failures only; never resubmit an accepted upload.
           network_errors=(
-            -e "('Connection aborted.', "
+            -e 'Connection (aborted|reset|refused)|Broken pipe|RemoteDisconnected'
+            -e 'Remote end closed connection|Failed to establish a new connection'
+            -e '(Read|Connection) timed out|ReadTimeout|ConnectTimeout'
+            -e 'Temporary failure in name resolution|NameResolutionError|Failed to resolve'
+            -e 'Name or service not known|Network is unreachable'
             -e 'Maximum retries exceeded trying to reach the store.'
-            -e 'Issue encountered while processing your request: [502]'
-            -e 'Issue encountered while processing your request: [503]'
-            -e 'Issue encountered while processing your request: [504]'
+            -e 'Issue encountered while processing your request: \[(500|502|503|504)\]'
+          )
+          store_errors=(
+            -e 'manual.?review|human review|need_manual_review'
+            -e 'Issues while processing snap:|Store operation failed:'
+            -e 'credentials|unauthori[sz]ed|forbidden|permission denied|certificate.verify.failed'
+            -e 'Issue encountered while processing your request: \[4[0-9]{2}\]'
           )
           output=$(mktemp)
+          trap 'rm -f "$output"' EXIT
           for attempt in 1 2 3; do
             if snapcraft upload "$SNAP_FILE" "${args[@]}" --release "$CHANNEL" 2>&1 |
               tee "$output" | sed -u '/^Status: processing\r*$/d'; then
@@ -218,7 +226,8 @@ jobs:
               exit 0
             fi
             if (( attempt == 3 )) || grep -q '^Status: ' "$output" ||
-              ! grep -Fq "${network_errors[@]}" "$output"; then
+              grep -Eiq "${store_errors[@]}" "$output" ||
+              ! grep -Eiq "${network_errors[@]}" "$output"; then
               exit 1
             fi
             delay=$((attempt * 60))

@@ -50,10 +50,7 @@ Other branches and events never publish. Publishing runs only after successful
 build and test steps.
 
 Snap components are saved and uploaded with their snap; the Snap Store must
-enable components for the snap first.
-If an upload loses its connection to the Snap Store before the store starts
-processing it, publishing retries up to twice. Store errors, such as permission
-or review failures, fail at once.
+enable components for your account.
 
 | Input | Default | Purpose |
 |---|---|---|
