@@ -61,13 +61,21 @@ jobs:
         if: matrix.build-from == 'head'
         run: |
           recipe=snap/snapcraft.yaml
-          if ! upstream=$(yq -er '
-            [.parts[] | select(.source-tag // "" | contains("SNAPCRAFT_PROJECT_VERSION"))] |
-            select(length == 1) | .[0].source
-          ' "$recipe"); then
-            echo '::error::Exactly one part must reference SNAPCRAFT_PROJECT_VERSION in source-tag.'
+          export SNAP_PART
+          SNAP_PART=$(yq -r '
+            .parts | to_entries[] |
+            select(.value.source-tag // "" | contains("SNAPCRAFT_PROJECT_VERSION")) | .key
+          ' "$recipe")
+          if [[ -z "$SNAP_PART" ]]; then
+            SNAP_PART=$(yq -r '
+              .parts | to_entries[] | select((.value.source-commit // "") != "") | .key
+            ' "$recipe")
+          fi
+          if [[ -z "$SNAP_PART" || "$SNAP_PART" == *$'\n'* ]]; then
+            echo '::error::HEAD requires one version-tagged part, or one source-commit part when no version-tagged part exists.'
             exit 1
           fi
+          upstream=$(yq -er '.parts[strenv(SNAP_PART)].source' "$recipe")
           commit=$(timeout 60 git ls-remote --exit-code -- "$upstream" HEAD | cut -f1)
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
           export SNAP_COMMIT="$commit" SNAP_VERSION="git-${commit:0:7}"
@@ -76,7 +84,7 @@ jobs:
           yq -i '
             .version = strenv(SNAP_VERSION) |
             .grade = "devel" |
-            with(.parts[] | select(.source-tag // "" | contains("SNAPCRAFT_PROJECT_VERSION"));
+            with(.parts[strenv(SNAP_PART)];
               .source-commit = strenv(SNAP_COMMIT) | del(.source-tag)
             )
           ' "$recipe"

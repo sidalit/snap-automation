@@ -79,6 +79,8 @@ parts:
 
 HEAD builds replace its tag with the full upstream commit and set
 `version: git-<7-character-sha>` and `grade: devel`.
+If no part references `SNAPCRAFT_PROJECT_VERSION` in its tag, the recipe must have
+exactly one part with a nonempty `source-commit`; HEAD builds update that commit instead.
 
 Artifacts use `<snap-name>-<version>-<arch>`, such as `pocketbase-git-6f370ea-amd64`.
 
