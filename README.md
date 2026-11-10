@@ -1,8 +1,8 @@
 # snap-automation
 
-Build and publish amd64 and arm64 in parallel by default. Each source/architecture runs
-fetch, prepare, build, optional test, and publish steps in one job. Only HEAD
-builds need source preparation.
+Build and publish `amd64` and `arm64` in parallel by default.
+Each source/architecture runs fetch, prepare, build, optional test, and publish
+steps in one job. Only HEAD builds need source preparation.
 
 ## Use it
 
